@@ -1,0 +1,185 @@
+@import url('https://fonts.googleapis.com/css2?family=Raleway&display=swap');
+
+* {
+    margin: 0px;
+    padding: 0px;
+    box-sizing: border-box;
+}
+
+.cloud {
+    overflow: hidden;
+    position: relative;
+    width: 100%;
+    padding-bottom: 56.25%;
+ 
+    /* background: url(https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiziBbuYgdLNFQXQj4QmRlJCwLVfFWqsCzgR8M9tQlzlzwWmetdweSkxDzF3ihvPltemc41vrUVUBTkWoYqsp3jvguD9YcguW4AK1pq5G0KVL4zIEh_MhIjQSIaEJMFt-9F-IRtCfdlzRymuTMNYhL21dUhJ5m33IoI-WY2zzKUlRizV7giGAFcVLxYKpw/s1600/00_2284_New_Zealand_Alps_%28aerial_view%29.jpg);
+    background-size: cover; */
+    background-color: #3d3c3c;
+    /* /* height: 100vh; */
+}
+
+.heading {
+    position: relative;
+    padding: 30px;
+    color: #1b1b1bd6;
+    font-size: 50px;
+    font-weight: bold;
+    z-index: 0;
+    font-family: 'Raleway', sans-serif;
+}
+
+.nav ul,
+#projects ul,
+#socials ul {
+    list-style-type: none;
+}
+
+.nav li {
+    float: left;
+}
+
+.nav li a {
+    position: relative;
+    display: block;
+    color: #1b1b1bd6;
+    text-align: center;
+    text-decoration: none;
+    padding-left: 40px;
+    margin-top: -15px;
+    font-family: 'Raleway', sans-serif;
+    z-index: 1000;
+    font-size: 15px;
+    font-weight: bold;
+}
+
+#projects li a {
+    color: #1b1b1bd6;
+    text-decoration: none;
+    margin-top: 20px;
+    line-height: 200%;
+    font-size: 2.6rem;
+}
+
+#socials li a {
+    color: #1b1b1bd6;
+    text-decoration: none;
+    margin-top: 20px;
+    line-height: 200%;
+    font-size: 2.6rem;
+}
+
+input[type=text],
+select,
+textarea {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+    margin-top: 6px;
+    margin-bottom: 16px;
+    resize: vertical;
+}
+
+input[type=submit] {
+    background-color: #04AA6D;
+    color: white;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+input[type=submit]:hover {
+    background-color: #45a049;
+}
+
+.about {
+    margin-top: 0px;
+    position: relative;
+    width: 40%;
+    float: right;
+    text-align: right;
+    font-family: 'Raleway', sans-serif;
+    z-index: 100;
+    font-size: 30px;
+    font-weight: bold;
+    line-height: 150%;
+    color: #1b1b1bd6;
+    padding-right: 40px;
+}
+
+.cloud img {
+    width: 100%;
+    left: 0;
+    top: 0;
+    position: absolute;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    pointer-events: none;
+}
+
+@-webkit-keyframes animCloud {
+    from {
+        -webkit-transform: translateX(100%);
+    }
+
+    to {
+        -webkit-transform: translateX(-100%);
+    }
+}
+
+@-moz-keyframes animCloud {
+    from {
+        -moz-transform: translateX(100%);
+    }
+
+    to {
+        -moz-transform: translateX(-100%);
+    }
+}
+
+@keyframes animCloud {
+    from {
+        -webkit-transform: translateX(100%);
+        -moz-transform: translateX(100%);
+        -ms-transform: translateX(100%);
+        -o-transform: translateX(100%);
+        transform: translateX(100%);
+    }
+
+    to {
+        -webkit-transform: translateX(-100%);
+        -moz-transform: translateX(-100%);
+        -ms-transform: translateX(-100%);
+        -o-transform: translateX(-100%);
+        transform: translateX(-100%);
+    }
+}
+
+.cloud1 {
+    -webkit-animation: animCloud 20s infinite linear;
+    -moz-animation: animCloud 20s infinite linear;
+    animation: animCloud 20s infinite linear;
+    z-index: 10000;
+}
+
+.cloud2 {
+    -webkit-animation: animCloud 40s infinite linear;
+    -moz-animation: animCloud 40s infinite linear;
+    animation: animCloud 40s infinite linear;
+}
+
+.cloud3 {
+    -webkit-animation: animCloud 60s infinite linear;
+    -moz-animation: animCloud 60s infinite linear;
+    animation: animCloud 60s infinite linear;
+}
+
+.cloud4 {
+    -webkit-animation: animCloud 80s infinite linear;
+    -moz-animation: animCloud 80s infinite linear;
+    animation: animCloud 80s infinite linear;
+}
