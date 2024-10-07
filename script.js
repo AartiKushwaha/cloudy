@@ -1,28 +1,9 @@
-function showContent(id) {
-    const contentDivs = document.querySelectorAll('.about');
-    contentDivs.forEach(div => {
-      div.style.display = 'none';
-    });
-  
-    document.getElementById(id).style.display = 'block';
-  }
-
-
-
-dotnet add package Microsoft.EntityFrameworkCore
-dotnet add package Npgsql.EntityFrameworkCore.PostgreSQL
-dotnet add package Microsoft.EntityFrameworkCore.Design
-dotnet add package Microsoft.Extensions.Configuration
-
-// Models/Order.cs
 using System;
-using System.ComponentModel.DataAnnotations;
 
-namespace OrderBookingService.Models
+namespace OrderBookingConsoleApp.Models
 {
     public class Order
     {
-        [Key]
         public int Id { get; set; }
         public string Symbol { get; set; }
         public int Quantity { get; set; }
@@ -34,8 +15,7 @@ namespace OrderBookingService.Models
     }
 }
 
-// Models/Purchase.cs
-namespace OrderBookingService.Models
+namespace OrderBookingConsoleApp.Models
 {
     public class Purchase
     {
@@ -46,158 +26,214 @@ namespace OrderBookingService.Models
 }
 
 
-// Data/OrderDbContext.cs
-using Microsoft.EntityFrameworkCore;
-using OrderBookingService.Models;
 
-namespace OrderBookingService.Data
+using Npgsql;
+using System.Data;
+
+namespace OrderBookingConsoleApp
 {
-    public class OrderDbContext : DbContext
+    public static class DatabaseConfig
     {
-        public OrderDbContext(DbContextOptions<OrderDbContext> options) : base(options) { }
+        private static readonly string connectionString = 
+            "Host=localhost;Port=5432;Username=your_username;Password=your_password;Database=OrderBookingDB";
 
-        public DbSet<Order> Orders { get; set; }
+        public static IDbConnection GetConnection()
+        {
+            return new NpgsqlConnection(connectionString);
+        }
     }
 }
 
 
 
-{
-  "ConnectionStrings": {
-    "PostgresConnection": "Host=localhost;Database=OrderBookingDB;Username=your_username;Password=your_password"
-  },
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information",
-      "Microsoft.AspNetCore": "Warning"
-    }
-  },
-  "AllowedHosts": "*"
-}
-
-using Microsoft.EntityFrameworkCore;
-using OrderBookingService.Data;
-using OrderBookingService.Services;
-
-var builder = WebApplication.CreateBuilder(args);
-
-// Configure PostgreSQL
-builder.Services.AddDbContext<OrderDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("PostgresConnection")));
-
-// Register the Order service
-builder.Services.AddScoped<OrderService>();
-
-// Add services to the container.
-builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-
-var app = builder.Build();
-
-// Configure the HTTP request pipeline.
-app.UseHttpsRedirection();
-app.UseAuthorization();
-app.MapControllers();
-
-app.Run();
 
 
-// Services/OrderService.cs
-using Microsoft.EntityFrameworkCore;
-using OrderBookingService.Data;
-using OrderBookingService.Models;
+using Dapper;
+using OrderBookingConsoleApp.Models;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Threading.Tasks;
 
-namespace OrderBookingService.Services
+namespace OrderBookingConsoleApp.Services
 {
     public class OrderService
     {
-        private readonly OrderDbContext _context;
+        private readonly IDbConnection _dbConnection;
 
-        public OrderService(OrderDbContext context)
+        public OrderService()
         {
-            _context = context;
+            _dbConnection = DatabaseConfig.GetConnection();
         }
 
-        public async Task<List<Order>> GetAsync() => await _context.Orders.ToListAsync();
-
-        public async Task<Order?> GetAsync(int id) => await _context.Orders.FindAsync(id);
-
-        public async Task CreateAsync(Order newOrder)
+        public async Task<int> CreateOrderAsync(Order order)
         {
-            _context.Orders.Add(newOrder);
-            await _context.SaveChangesAsync();
+            string sql = @"
+                INSERT INTO Orders (Symbol, Quantity, BookingTime, ExecutionTime, FillPrice, BidPrice, Status)
+                VALUES (@Symbol, @Quantity, @BookingTime, @ExecutionTime, @FillPrice, @BidPrice, @Status)
+                RETURNING Id;";
+
+            return await _dbConnection.ExecuteScalarAsync<int>(sql, order);
         }
 
-        public async Task UpdateAsync(int id, Order updatedOrder)
+        public async Task<List<Order>> GetAllOrdersAsync()
         {
-            var existingOrder = await _context.Orders.FindAsync(id);
-            if (existingOrder == null) return;
-
-            existingOrder.Symbol = updatedOrder.Symbol;
-            existingOrder.Quantity = updatedOrder.Quantity;
-            existingOrder.BookingTime = updatedOrder.BookingTime;
-            existingOrder.ExecutionTime = updatedOrder.ExecutionTime;
-            existingOrder.FillPrice = updatedOrder.FillPrice;
-            existingOrder.BidPrice = updatedOrder.BidPrice;
-            existingOrder.Status = updatedOrder.Status;
-
-            await _context.SaveChangesAsync();
+            string sql = "SELECT * FROM Orders";
+            var result = await _dbConnection.QueryAsync<Order>(sql);
+            return result.AsList();
         }
 
-        public async Task RemoveAsync(int id)
+        public async Task<Order> GetOrderByIdAsync(int id)
         {
-            var order = await _context.Orders.FindAsync(id);
-            if (order != null)
+            string sql = "SELECT * FROM Orders WHERE Id = @Id";
+            return await _dbConnection.QueryFirstOrDefaultAsync<Order>(sql, new { Id = id });
+        }
+
+        public async Task UpdateOrderStatusAsync(int id, string status)
+        {
+            string sql = "UPDATE Orders SET Status = @Status WHERE Id = @Id";
+            await _dbConnection.ExecuteAsync(sql, new { Id = id, Status = status });
+        }
+
+        public async Task DeleteOrderAsync(int id)
+        {
+            string sql = "DELETE FROM Orders WHERE Id = @Id";
+            await _dbConnection.ExecuteAsync(sql, new { Id = id });
+        }
+    }
+        }
+
+
+
+
+using OrderBookingConsoleApp.Models;
+using OrderBookingConsoleApp.Services;
+using System;
+using System.Threading.Tasks;
+
+namespace OrderBookingConsoleApp
+{
+    class Program
+    {
+        static async Task Main(string[] args)
+        {
+            OrderService orderService = new OrderService();
+
+            Console.WriteLine("Order Booking Console Application");
+
+            while (true)
             {
-                _context.Orders.Remove(order);
-                await _context.SaveChangesAsync();
+                Console.WriteLine("\nMenu:");
+                Console.WriteLine("1. Create New Order");
+                Console.WriteLine("2. View All Orders");
+                Console.WriteLine("3. Get Order by ID");
+                Console.WriteLine("4. Update Order Status");
+                Console.WriteLine("5. Delete Order");
+                Console.WriteLine("6. Exit");
+                Console.Write("Select an option: ");
+                
+                var choice = Console.ReadLine();
+
+                switch (choice)
+                {
+                    case "1":
+                        await CreateNewOrder(orderService);
+                        break;
+                    case "2":
+                        await DisplayAllOrders(orderService);
+                        break;
+                    case "3":
+                        await GetOrderById(orderService);
+                        break;
+                    case "4":
+                        await UpdateOrderStatus(orderService);
+                        break;
+                    case "5":
+                        await DeleteOrder(orderService);
+                        break;
+                    case "6":
+                        return;
+                }
             }
         }
-    }
-                                      }
 
-
-
-// Controllers/OrderController.cs
-using Microsoft.AspNetCore.Mvc;
-using OrderBookingService.Models;
-using OrderBookingService.Services;
-
-namespace OrderBookingService.Controllers
-{
-    [ApiController]
-    [Route("orders")]
-    public class OrderController : ControllerBase
-    {
-        private readonly OrderService _orderService;
-
-        public OrderController(OrderService orderService) =>
-            _orderService = orderService;
-
-        [HttpPost("order")]
-        public async Task<IActionResult> Create(Order newOrder)
+        private static async Task CreateNewOrder(OrderService service)
         {
-            await _orderService.CreateAsync(newOrder);
-            return CreatedAtAction(nameof(Get), new { id = newOrder.Id }, newOrder);
+            var order = new Order
+            {
+                Symbol = "AAPL",
+                Quantity = 100,
+                BookingTime = DateTime.Now,
+                ExecutionTime = DateTime.Now.AddMinutes(30),
+                FillPrice = 145.5,
+                BidPrice = 145.0,
+                Status = "Pending"
+            };
+
+            int orderId = await service.CreateOrderAsync(order);
+            Console.WriteLine($"New Order Created with ID: {orderId}");
         }
 
-        [HttpGet("all")]
-        public async Task<List<Order>> Get() =>
-            await _orderService.GetAsync();
-
-        [HttpGet("whoami")]
-        public IActionResult WhoAmI()
+        private static async Task DisplayAllOrders(OrderService service)
         {
-            var user = Environment.UserName;
-            return Ok($"cps-topic-{user}");
+            var orders = await service.GetAllOrdersAsync();
+            foreach (var order in orders)
+            {
+                Console.WriteLine($"{order.Id} - {order.Symbol}, {order.Quantity} @ {order.FillPrice} [{order.Status}]");
+            }
+        }
+
+        private static async Task GetOrderById(OrderService service)
+        {
+            Console.Write("Enter Order ID: ");
+            int id = int.Parse(Console.ReadLine());
+
+            var order = await service.GetOrderByIdAsync(id);
+            if (order != null)
+            {
+                Console.WriteLine($"{order.Id} - {order.Symbol}, {order.Quantity} @ {order.FillPrice} [{order.Status}]");
+            }
+            else
+            {
+                Console.WriteLine("Order not found.");
+            }
+        }
+
+        private static async Task UpdateOrderStatus(OrderService service)
+        {
+            Console.Write("Enter Order ID: ");
+            int id = int.Parse(Console.ReadLine());
+
+            Console.Write("Enter new Status: ");
+            string status = Console.ReadLine();
+
+            await service.UpdateOrderStatusAsync(id, status);
+            Console.WriteLine("Order status updated.");
+        }
+
+        private static async Task DeleteOrder(OrderService service)
+        {
+            Console.Write("Enter Order ID: ");
+            int id = int.Parse(Console.ReadLine());
+
+            await service.DeleteOrderAsync(id);
+            Console.WriteLine("Order deleted.");
         }
     }
-}
+        }
 
 
 
-
+CREATE TABLE Orders (
+    Id SERIAL PRIMARY KEY,
+    Symbol VARCHAR(50),
+    Quantity INT,
+    BookingTime TIMESTAMP,
+    ExecutionTime TIMESTAMP,
+    FillPrice FLOAT,
+    BidPrice FLOAT,
+    Status VARCHAR(20)
+);
 
 
 
