@@ -1,177 +1,145 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Caching.Memory;
-using OrderBookingService.Models;
+using Newtonsoft.Json;
+using OrderBookingConsoleApp.Models;
 using System;
 using System.Collections.Generic;
+using System.Net;
+using System.Text;
 
-namespace OrderBookingService.Controllers
+namespace OrderBookingConsoleApp
 {
-    [Route("orders")]
-    [ApiController]
-    public class OrdersController : ControllerBase
+    class Program
     {
-        private readonly IMemoryCache _cache;
-        private readonly string _userTopic;
+        private static Dictionary<int, Order> orderBook = new Dictionary<int, Order>();
+        private static int orderIdCounter = 1;
+        private static string userTopic = "miclarke"; // Simulating a user-based topic name
 
-        // Simulate a user-based topic name for the service
-        public OrdersController(IMemoryCache cache)
+        static void Main(string[] args)
         {
-            _cache = cache;
-            _userTopic = "miclarke"; // Hardcoded for demonstration
-        }
+            Console.WriteLine("Order Booking Service is starting...");
 
-        // POST /orders/order - Create a new order
-        [HttpPost("order")]
-        public IActionResult CreateOrder([FromBody] Purchase purchase)
-        {
-            if (purchase == null || string.IsNullOrWhiteSpace(purchase.Symbol) || purchase.Quantity <= 0 || purchase.Price <= 0)
-                return BadRequest("Invalid purchase data.");
-
-            // Create a new order with unique ID
-            var order = new Order
+            using (HttpListener listener = new HttpListener())
             {
-                Id = new Random().Next(1, 10000), // For demonstration; in production, use a more robust ID generator.
-                Symbol = purchase.Symbol,
-                Quantity = purchase.Quantity,
-                BookingTime = DateTime.UtcNow,
-                BidPrice = purchase.Price,
-                Status = "Booked"
-            };
+                listener.Prefixes.Add("http://localhost:5000/orders/");
+                listener.Start();
+                Console.WriteLine("Listening for requests at http://localhost:5000/orders/...");
 
-            // Save order to in-memory cache
-            List<Order> orders;
-            if (!_cache.TryGetValue("OrderList", out orders))
-                orders = new List<Order>();
-
-            orders.Add(order);
-            _cache.Set("OrderList", orders);
-
-            return Ok(order);
-        }
-
-        // GET /orders/all - Get all orders
-        [HttpGet("all")]
-        public IActionResult GetAllOrders()
-        {
-            if (!_cache.TryGetValue("OrderList", out List<Order> orders))
-                orders = new List<Order>();
-
-            return Ok(orders);
-        }
-
-        // GET /orders/whoami - Get the CPS topic name
-        [HttpGet("whoami")]
-        public IActionResult GetUserTopic()
-        {
-            return Ok(new { TopicName = _userTopic });
-        }
-
-        // POST /orders/update/{id} - Update an order status (mock fulfilment/reject)
-        [HttpPost("update/{id}")]
-        public IActionResult UpdateOrderStatus(int id, [FromBody] string status)
-        {
-            if (string.IsNullOrWhiteSpace(status))
-                return BadRequest("Invalid status.");
-
-            if (!_cache.TryGetValue("OrderList", out List<Order> orders))
-                return NotFound("Order list not found.");
-
-            var order = orders.Find(o => o.Id == id);
-            if (order == null)
-                return NotFound($"Order with ID {id} not found.");
-
-            // Update order status and execution time if fulfilled
-            order.Status = status;
-            order.ExecutionTime = DateTime.UtcNow;
-
-            _cache.Set("OrderList", orders);
-            return Ok(order);
-        }
-    }
-            }
-
-
-
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-
-namespace OrderBookingService
-{
-    public class Startup
-    {
-        public void ConfigureServices(IServiceCollection services)
-        {
-            // Add MVC services to the project
-            services.AddControllers();
-
-            // Add in-memory caching
-            services.AddMemoryCache();
-        }
-
-        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
-        {
-            if (env.IsDevelopment())
-            {
-                app.UseDeveloperExceptionPage();
-            }
-
-            app.UseRouting();
-
-            app.UseEndpoints(endpoints =>
-            {
-                // Map controller routes
-                endpoints.MapControllers();
-            });
-        }
-    }
-}
-
-
-
-
-
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Hosting;
-
-namespace OrderBookingService
-{
-    public class Program
-    {
-        public static void Main(string[] args)
-        {
-            CreateHostBuilder(args).Build().Run();
-        }
-
-        public static IHostBuilder CreateHostBuilder(string[] args) =>
-            Host.CreateDefaultBuilder(args)
-                .ConfigureWebHostDefaults(webBuilder =>
+                while (true)
                 {
-                    webBuilder.UseStartup<Startup>();
-                });
+                    // Wait for an incoming request
+                    HttpListenerContext context = listener.GetContext();
+                    HttpListenerRequest request = context.Request;
+                    HttpListenerResponse response = context.Response;
+
+                    string responseString = HandleRequest(request);
+                    byte[] buffer = Encoding.UTF8.GetBytes(responseString);
+
+                    // Send the response back to the client
+                    response.ContentLength64 = buffer.Length;
+                    response.OutputStream.Write(buffer, 0, buffer.Length);
+                    response.OutputStream.Close();
+                }
+            }
+        }
+
+        private static string HandleRequest(HttpListenerRequest request)
+        {
+            // Route the requests based on HTTP Method and URL
+            if (request.HttpMethod == "POST" && request.Url.AbsolutePath == "/orders/order")
+            {
+                return CreateOrder(request);
+            }
+            else if (request.HttpMethod == "GET" && request.Url.AbsolutePath == "/orders/all")
+            {
+                return GetAllOrders();
+            }
+            else if (request.HttpMethod == "GET" && request.Url.AbsolutePath == "/orders/whoami")
+            {
+                return GetWhoAmI();
+            }
+            else if (request.HttpMethod == "POST" && request.Url.AbsolutePath.StartsWith("/orders/update"))
+            {
+                return UpdateOrderStatus(request);
+            }
+
+            return "Invalid request.";
+        }
+
+        private static string CreateOrder(HttpListenerRequest request)
+        {
+            string requestBody;
+            using (var reader = new System.IO.StreamReader(request.InputStream, request.ContentEncoding))
+            {
+                requestBody = reader.ReadToEnd();
+            }
+
+            try
+            {
+                // Parse the incoming purchase data
+                Purchase purchase = JsonConvert.DeserializeObject<Purchase>(requestBody);
+                if (purchase == null || string.IsNullOrWhiteSpace(purchase.Symbol) || purchase.Quantity <= 0 || purchase.Price <= 0)
+                    return "Invalid purchase data.";
+
+                // Create a new order
+                Order newOrder = new Order
+                {
+                    Id = orderIdCounter++,
+                    Symbol = purchase.Symbol,
+                    Quantity = purchase.Quantity,
+                    BookingTime = DateTime.UtcNow,
+                    BidPrice = purchase.Price,
+                    Status = "Booked"
+                };
+
+                // Add to in-memory order book
+                orderBook[newOrder.Id] = newOrder;
+
+                return JsonConvert.SerializeObject(newOrder);
+            }
+            catch
+            {
+                return "Error processing order creation.";
+            }
+        }
+
+        private static string GetAllOrders()
+        {
+            return JsonConvert.SerializeObject(orderBook.Values);
+        }
+
+        private static string GetWhoAmI()
+        {
+            return $"{{ \"TopicName\": \"{userTopic}\" }}";
+        }
+
+        private static string UpdateOrderStatus(HttpListenerRequest request)
+        {
+            string requestBody;
+            using (var reader = new System.IO.StreamReader(request.InputStream, request.ContentEncoding))
+            {
+                requestBody = reader.ReadToEnd();
+            }
+
+            try
+            {
+                // Extract order ID from the URL
+                string[] segments = request.Url.AbsolutePath.Split('/');
+                if (segments.Length < 4 || !int.TryParse(segments[3], out int orderId))
+                    return "Invalid order ID.";
+
+                // Update the order status
+                if (orderBook.ContainsKey(orderId))
+                {
+                    orderBook[orderId].Status = requestBody.Trim('"'); // Status is passed as raw string
+                    orderBook[orderId].ExecutionTime = DateTime.UtcNow;
+                    return JsonConvert.SerializeObject(orderBook[orderId]);
+                }
+
+                return $"Order ID {orderId} not found.";
+            }
+            catch
+            {
+                return "Error processing order update.";
+            }
+        }
     }
-}
-
-
-
-
-<Project Sdk="Microsoft.NET.Sdk.Web">
-
-  <PropertyGroup>
-    <TargetFramework>net48</TargetFramework>
-    <OutputType>Exe</OutputType>
-    <RootNamespace>OrderBookingService</RootNamespace>
-    <AssemblyName>OrderBookingService</AssemblyName>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.App" />
-  </ItemGroup>
-
-</Project>
-
-
-
+        }
