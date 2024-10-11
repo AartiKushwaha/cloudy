@@ -1,145 +1,73 @@
-using Newtonsoft.Json;
-using OrderBookingConsoleApp.Models;
-using System;
-using System.Collections.Generic;
-using System.Net;
-using System.Text;
+Technical Architecture Transformation
 
-namespace OrderBookingConsoleApp
-{
-    class Program
-    {
-        private static Dictionary<int, Order> orderBook = new Dictionary<int, Order>();
-        private static int orderIdCounter = 1;
-        private static string userTopic = "miclarke"; // Simulating a user-based topic name
+1. Current State Overview:
 
-        static void Main(string[] args)
-        {
-            Console.WriteLine("Order Booking Service is starting...");
+The existing system is based on a monolithic architecture using Java 1.3 and Angular 11.
 
-            using (HttpListener listener = new HttpListener())
-            {
-                listener.Prefixes.Add("http://localhost:5000/orders/");
-                listener.Start();
-                Console.WriteLine("Listening for requests at http://localhost:5000/orders/...");
+Communication between components is managed using IBM MQ and SOAP-based web services.
 
-                while (true)
-                {
-                    // Wait for an incoming request
-                    HttpListenerContext context = listener.GetContext();
-                    HttpListenerRequest request = context.Request;
-                    HttpListenerResponse response = context.Response;
+Key limitations include tight coupling between services, high latency, and limited scalability.
 
-                    string responseString = HandleRequest(request);
-                    byte[] buffer = Encoding.UTF8.GetBytes(responseString);
 
-                    // Send the response back to the client
-                    response.ContentLength64 = buffer.Length;
-                    response.OutputStream.Write(buffer, 0, buffer.Length);
-                    response.OutputStream.Close();
-                }
-            }
-        }
 
-        private static string HandleRequest(HttpListenerRequest request)
-        {
-            // Route the requests based on HTTP Method and URL
-            if (request.HttpMethod == "POST" && request.Url.AbsolutePath == "/orders/order")
-            {
-                return CreateOrder(request);
-            }
-            else if (request.HttpMethod == "GET" && request.Url.AbsolutePath == "/orders/all")
-            {
-                return GetAllOrders();
-            }
-            else if (request.HttpMethod == "GET" && request.Url.AbsolutePath == "/orders/whoami")
-            {
-                return GetWhoAmI();
-            }
-            else if (request.HttpMethod == "POST" && request.Url.AbsolutePath.StartsWith("/orders/update"))
-            {
-                return UpdateOrderStatus(request);
-            }
+2. Target State Architecture:
 
-            return "Invalid request.";
-        }
+Transitioning to a modernized microservices-based architecture with Java 17 and Angular 18.
 
-        private static string CreateOrder(HttpListenerRequest request)
-        {
-            string requestBody;
-            using (var reader = new System.IO.StreamReader(request.InputStream, request.ContentEncoding))
-            {
-                requestBody = reader.ReadToEnd();
-            }
+Replacing IBM MQ with Apache Kafka for real-time, event-driven messaging, enabling asynchronous communication and increased throughput.
 
-            try
-            {
-                // Parse the incoming purchase data
-                Purchase purchase = JsonConvert.DeserializeObject<Purchase>(requestBody);
-                if (purchase == null || string.IsNullOrWhiteSpace(purchase.Symbol) || purchase.Quantity <= 0 || purchase.Price <= 0)
-                    return "Invalid purchase data.";
+Migrating from SOAP to RESTful APIs to simplify service interactions, improve performance, and support easier integrations.
 
-                // Create a new order
-                Order newOrder = new Order
-                {
-                    Id = orderIdCounter++,
-                    Symbol = purchase.Symbol,
-                    Quantity = purchase.Quantity,
-                    BookingTime = DateTime.UtcNow,
-                    BidPrice = purchase.Price,
-                    Status = "Booked"
-                };
 
-                // Add to in-memory order book
-                orderBook[newOrder.Id] = newOrder;
 
-                return JsonConvert.SerializeObject(newOrder);
-            }
-            catch
-            {
-                return "Error processing order creation.";
-            }
-        }
+3. Backend Upgrade:
 
-        private static string GetAllOrders()
-        {
-            return JsonConvert.SerializeObject(orderBook.Values);
-        }
+Refactoring Java 1.3 services to Java 17, leveraging modern language features such as lambda expressions, streams, and improved concurrency.
 
-        private static string GetWhoAmI()
-        {
-            return $"{{ \"TopicName\": \"{userTopic}\" }}";
-        }
+Modularizing monolithic codebases into independently deployable microservices.
 
-        private static string UpdateOrderStatus(HttpListenerRequest request)
-        {
-            string requestBody;
-            using (var reader = new System.IO.StreamReader(request.InputStream, request.ContentEncoding))
-            {
-                requestBody = reader.ReadToEnd();
-            }
 
-            try
-            {
-                // Extract order ID from the URL
-                string[] segments = request.Url.AbsolutePath.Split('/');
-                if (segments.Length < 4 || !int.TryParse(segments[3], out int orderId))
-                    return "Invalid order ID.";
 
-                // Update the order status
-                if (orderBook.ContainsKey(orderId))
-                {
-                    orderBook[orderId].Status = requestBody.Trim('"'); // Status is passed as raw string
-                    orderBook[orderId].ExecutionTime = DateTime.UtcNow;
-                    return JsonConvert.SerializeObject(orderBook[orderId]);
-                }
+4. Frontend Upgrade:
 
-                return $"Order ID {orderId} not found.";
-            }
-            catch
-            {
-                return "Error processing order update.";
-            }
-        }
-    }
-        }
+Upgrading Angular 11 to Angular 18, introducing better state management and improved component modularity.
+
+Implementing enhanced UI features and performance optimizations using the latest Angular capabilities.
+
+
+
+5. Messaging System Transition:
+
+Replacing synchronous message queues with Kafka’s distributed streaming platform.
+
+Implementing Kafka Streams for real-time data processing and event sourcing patterns.
+
+
+
+6. Service Migration:
+
+Redesigning SOAP services into RESTful APIs to support lightweight, stateless communication.
+
+Utilizing HTTP methods, JSON payloads, and HATEOAS principles to build intuitive and maintainable RESTful services.
+
+
+
+7. Security Enhancements:
+
+Implementing modern security protocols such as OAuth 2.0 and JWT for secure authentication and authorization.
+
+Using Kafka’s built-in ACLs and encryption to protect sensitive data.
+
+
+
+8. Cloud-Native Considerations:
+
+Designing microservices to be containerized using Docker and orchestrated with Kubernetes for better scalability and resiliency.
+
+Incorporating CI/CD pipelines to automate testing, builds, and deployments.
+
+
+
+
+This transformation will result in a more modular, scalable, and maintainable architecture, capable of supporting future business growth and technological advancements.
+
