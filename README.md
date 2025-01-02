@@ -1,7 +1,6 @@
 import pytest
 from unittest import mock
 from httpx import AsyncClient, Response
-from uuid import uuid4
 
 @pytest.mark.asyncio
 async def test_get_blocking_vulnerability_criteria_for_all_tools():
@@ -15,11 +14,6 @@ async def test_get_blocking_vulnerability_criteria_for_all_tools():
                 "tool": None,
                 "identifiers": ["CWE-89", "CWE-564"],
                 "levels": [],
-                "
-
-
-
-"levels": [],
                 "minScore": 0,
                 "maxScore": 100
             },
