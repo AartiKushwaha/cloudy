@@ -1,108 +1,79 @@
-Documentation on CWE, CVE, and SAST Scanning
+import pytest
+from unittest import mock
+from httpx import AsyncClient, Response
+from uuid import uuid4
 
-1. What are CWE (Common Weakness Enumeration)?
-
-Definition:
-
-CWE is a categorized list of software and hardware weaknesses that can lead to vulnerabilities. It is maintained by MITRE Corporation and is used as a standard reference to understand, identify, and mitigate potential security flaws during software development.
-
-Key Features:
-
-Purpose: Helps developers and security teams identify and fix coding issues before they lead to exploitable vulnerabilities.
-
-Structure: CWEs are categorized into types like buffer overflows, improper input validation, and improper error handling.
-
-Usage: Used by tools like SAST scanners and vulnerability assessment frameworks to map detected issues.
-
-Example:
-
-CWE-79: Improper Neutralization of Input During Web Page Generation (Cross-Site Scripting - XSS).
-
-CWE-89: SQL Injection.
+@pytest.mark.asyncio
+async def test_get_blocking_vulnerability_criteria_for_all_tools():
+    # Mock configuration and responses
+    mock_validator_config = mock.Mock()  # Assuming this is the config class
+    mock_blocking_vulnerability_response = {
+        "SAST": [
+            {
+                "type": "SAST",
+                "category": "SQL Injection",
+                "tool": None,
+                "identifiers": ["CWE-89", "CWE-564"],
+                "levels": [],
+                "
 
 
 
-Benefits:
+"levels": [],
+                "minScore": 0,
+                "maxScore": 100
+            },
+            {
+                "type": "SAST",
+                "category": "Buffer Overflow",
+                "tool": None,
+                "identifiers": ["CWE-119", "CWE-120"],
+                "levels": [],
+                "minScore": 0,
+                "maxScore": 100
+            }
+        ]
+    }
 
-Enables understanding of root causes of vulnerabilities.
+    mock_response = Response(
+        status_code=200,
+        json=mock_blocking_vulnerability_response
+    )
 
-Standardizes the communication of weaknesses.
+    # Mock cache and HTTP client
+    mock_cache = mock.AsyncMock()
+    mock_cache.exists = mock.Mock(return_value=False)
+    mock_cache.set = mock.AsyncMock()
 
+    mock_http_client = mock.AsyncMock()
+    mock_http_client.request = mock.AsyncMock(return_value=mock_response)
 
+    # Create an instance of the client with mock dependencies
+    policy_validator_client = PolicyValidatorServiceClient(
+        pv_service_config=mock_validator_config,
+        client=mock_http_client
+    )
 
----
+    # Mock the context manager for the client
+    with mock.patch.object(
+        PolicyValidatorServiceClient, "__aenter__", return_value=policy_validator_client
+    ):
+        async with policy_validator_client as pv_client:
+            results = await pv_client.get_blocking_vulnerability_criteria_for_all_tools(
+                transaction_id="KNOWN_TXN_ID"
+            )
 
-2. What are CVE (Common Vulnerabilities and Exposures)?
+    # Assertions
+    assert len(results) == len(mock_blocking_vulnerability_response)  # Ensure all tool types are returned
+    assert "SAST" in results  # Ensure the key "SAST" exists
+    assert results["SAST"] == mock_blocking_vulnerability_response["SAST"]  # Validate content
 
-Definition:
+    # Verify the cache was updated
+    mock_cache.set.assert_awaited_once_with("SAST", mock_blocking_vulnerability_response["SAST"])
 
-CVE is a list of publicly disclosed cybersecurity vulnerabilities. Each CVE entry identifies a specific security vulnerability in software or hardware, providing a unique identifier and description.
-
-Key Features:
-
-Purpose: To provide a reference for known vulnerabilities to streamline risk management and remediation efforts.
-
-Structure: Each CVE has a unique ID (e.g., CVE-2024-1234), a description of the issue, and references for mitigation or patching.
-
-Managed by: MITRE Corporation and supported by the CVE Program.
-
-Example:
-
-CVE-2024-5678: A buffer overflow in application XYZ allows remote attackers to execute arbitrary code.
-
-
-
-Benefits:
-
-Helps prioritize patching efforts by identifying critical vulnerabilities.
-
-Provides standardization for reporting and managing vulnerabilities across platforms.
-
-
-
----
-
-3. What is SAST (Static Application Security Testing)?
-
-Definition:
-
-SAST is a security testing methodology that analyzes an application's source code, bytecode, or binary code for vulnerabilities without executing the program. It is a white-box testing technique used during development to detect and fix security flaws.
-
-Key Features:
-
-Scope: Focuses on identifying code-level issues such as injection flaws, buffer overflows, and insecure coding practices.
-
-Integration: Can be integrated into CI/CD pipelines for automated scanning in the early stages of development.
-
-Tools: Tools like SonarQube, Checkmarx, Veracode, and Fortify are commonly used.
-
-Output: Produces a report that maps detected vulnerabilities to CWE or CVE references.
-
-
-Benefits:
-
-Detects vulnerabilities early in the software development lifecycle (SDLC).
-
-Provides actionable insights for developers to fix issues.
-
-Improves code quality and reduces security risks.
-
-
-
----
-
-Relationship between CWE, CVE, and SAST
-
-CWE provides a standardized list of weaknesses that SAST tools use to detect coding flaws.
-
-CVE references specific vulnerabilities found in applications and systems, often caused by CWEs.
-
-SAST helps detect CWEs in the development phase to prevent them from becoming CVEs post-deployment.
-
-
-
----
-
-Conclusion:
-
-Understanding CWE, CVE, and SAST is crucial for developing secure software and managing cybersecurity risks. By integrating SAST tools into the SDLC and leveraging CWE and CVE standards, organizations can proactively identify, prioritize, and mitigate vulnerabilities.
+    # Verify the HTTP request was made with the correct parameters
+    mock_http_client.request.assert_awaited_once_with(
+        method="GET",
+        url=f"{mock_validator_config.base_url}/blocking-vulnerabilities",
+        headers={"X-MS-Unique-Id": "KNOWN_TXN_ID"}
+    )
