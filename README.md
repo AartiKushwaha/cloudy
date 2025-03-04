@@ -1,73 +1,73 @@
 import pytest
 from unittest import mock
-from httpx import AsyncClient, Response
+from fastapi import Request
+from resultsretriever.v1.routers.cache import expire
+from resultsretriever.clients.cache_to_client import cache_to_client
+from resultsretriever.utils.response import DataResponse
+from resultsretriever.utils.exceptions import ServiceException, ErrorCode
+
 
 @pytest.mark.asyncio
-async def test_get_blocking_vulnerability_criteria_for_all_tools():
-    # Mock configuration and responses
-    mock_validator_config = mock.Mock()  # Assuming this is the config class
-    mock_blocking_vulnerability_response = {
-        "SAST": [
-            {
-                "type": "SAST",
-                "category": "SQL Injection",
-                "tool": None,
-                "identifiers": ["CWE-89", "CWE-564"],
-                "levels": [],
-                "minScore": 0,
-                "maxScore": 100
-            },
-            {
-                "type": "SAST",
-                "category": "Buffer Overflow",
-                "tool": None,
-                "identifiers": ["CWE-119", "CWE-120"],
-                "levels": [],
-                "minScore": 0,
-                "maxScore": 100
-            }
-        ]
-    }
+@pytest.mark.parametrize(
+    "cache_name, mock_return_value, expected_status, expected_response",
+    [
+        # Case 1: Valid cache name, keys exist
+        ("valid_cache", True, 200, {"status": "SUCCESS", "data": "Cache successfully expired."}),
+        
+        # Case 2: Valid cache name, no keys exist
+        ("valid_cache_empty", False, 200, {"status": "SUCCESS", "data": "No action needed, cache was already empty."}),
+        
+        # Case 3: Invalid cache name
+        ("non_existing_cache", None, 404, {
+            "code": ErrorCode.CACHE_NOT_FOUND,
+            "message": "Cache not found",
+            "detail": "cache_name=non_existing_cache",
+            "http_code": 404
+        }),
+        
+        # Case 4: No cache name provided (Expire all caches)
+        (None, True, 200, {"status": "SUCCESS", "data": "Cleared all caches."}),
+    ]
+)
+@mock.patch("resultsretriever.clients.cache_to_client", return_value=mock.AsyncMock())
+async def test_expire_cache(
+    mock_cache_to_client,
+    cache_name: str,
+    mock_return_value: bool,
+    expected_status: int,
+    expected_response: dict
+):
+    cache_client_mock = mock.AsyncMock()
+    mock_cache_to_client.return_value = cache_client_mock
 
-    mock_response = Response(
-        status_code=200,
-        json=mock_blocking_vulnerability_response
-    )
+    # Mocking method responses
+    if cache_name == "non_existing_cache":
+        cache_client_mock.map_cache_key_existence = mock.AsyncMock(return_value={})
+    elif cache_name:
+        cache_client_mock.map_cache_key_existence = mock.AsyncMock(return_value={cache_name: mock_return_value})
+    else:
+        cache_client_mock.map_cache_key_existence = mock.AsyncMock(return_value={})
 
-    # Mock cache and HTTP client
-    mock_cache = mock.AsyncMock()
-    mock_cache.exists = mock.Mock(return_value=False)
-    mock_cache.set = mock.AsyncMock()
+    cache_client_mock.expire_specific_key = mock.AsyncMock(return_value=mock_return_value)
+    cache_client_mock.expire_all = mock.AsyncMock()
 
-    mock_http_client = mock.AsyncMock()
-    mock_http_client.request = mock.AsyncMock(return_value=mock_response)
+    # Creating a fake request
+    request = Request(scope={"type": "http"})
 
-    # Create an instance of the client with mock dependencies
-    policy_validator_client = PolicyValidatorServiceClient(
-        pv_service_config=mock_validator_config,
-        client=mock_http_client
-    )
+    try:
+        result: DataResponse = await expire(name=cache_name, request=request)
+        assert result.model_dump() == expected_response, f"Expected {expected_response}, got {result.model_dump()}"
 
-    # Mock the context manager for the client
-    with mock.patch.object(
-        PolicyValidatorServiceClient, "__aenter__", return_value=policy_validator_client
-    ):
-        async with policy_validator_client as pv_client:
-            results = await pv_client.get_blocking_vulnerability_criteria_for_all_tools(
-                transaction_id="KNOWN_TXN_ID"
-            )
+        if cache_name == "non_existing_cache":
+            cache_client_mock.expire_specific_key.assert_not_called()
+            cache_client_mock.expire_all.assert_not_called()
+        elif cache_name is None:
+            cache_client_mock.expire_all.assert_called_once()
+        else:
+            if mock_return_value:
+                cache_client_mock.expire_specific_key.assert_called_once()
+            else:
+                cache_client_mock.expire_specific_key.assert_not_called()
 
-    # Assertions
-    assert len(results) == len(mock_blocking_vulnerability_response)  # Ensure all tool types are returned
-    assert "SAST" in results  # Ensure the key "SAST" exists
-    assert results["SAST"] == mock_blocking_vulnerability_response["SAST"]  # Validate content
-
-    # Verify the cache was updated
-    mock_cache.set.assert_awaited_once_with("SAST", mock_blocking_vulnerability_response["SAST"])
-
-    # Verify the HTTP request was made with the correct parameters
-    mock_http_client.request.assert_awaited_once_with(
-        method="GET",
-        url=f"{mock_validator_config.base_url}/blocking-vulnerabilities",
-        headers={"X-MS-Unique-Id": "KNOWN_TXN_ID"}
-    )
+    except ServiceException as e:
+        assert e.code == expected_response["code"]
